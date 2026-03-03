@@ -1,0 +1,15 @@
+checkpoints (DONE)
+
+moving parts (NEED TO TEST)
+
+different kinds of blocks with diffent effects (ice block, mud)
+
+UI editor update, inspired by geometry dash (DONE)
+
+add a test mode, test the level within the editor
+
+add a set timer and a test timer (optional feature)
+
+motion detection trigger, can trigger movement of objects (DONE WITHING THE MOVING OBJECTS UPDATE)
+
+portals
