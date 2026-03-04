@@ -4,7 +4,7 @@
 #include "raylib.h"
 #include "types.h"
 
-#define MAX_OBJECTS 200
+#define MAX_OBJECTS 25000
 
 extern LevelObject levelObjects[MAX_OBJECTS];
 extern int objectCount;

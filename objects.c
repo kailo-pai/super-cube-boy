@@ -106,19 +106,46 @@ void PasteClipboardObjects(int gridX, int gridY) {
 void DrawObjects(bool isEditMode) {
     for (int i = 0; i < objectCount; i++) {
         if (!isEditMode && levelObjects[i].type == OBJ_TRIGGER) continue; 
+        if (!isEditMode && levelObjects[i].type == OBJ_KEY && !levelObjects[i].isActive) continue;
+        if (!isEditMode && levelObjects[i].type == OBJ_DOOR && !levelObjects[i].isActive) continue;
 
         Color objColor = DARKGRAY;
-        if (levelObjects[i].type == OBJ_HAZARD) objColor = RED;
         if (levelObjects[i].type == OBJ_SPAWN) objColor = GREEN;
         if (levelObjects[i].type == OBJ_END) objColor = YELLOW;
         if (levelObjects[i].type == OBJ_CHECKPOINT) objColor = BLUE;
         if (levelObjects[i].type == OBJ_MOVING_BLOCK) objColor = PURPLE;
         if (levelObjects[i].type == OBJ_TRIGGER) objColor = MAGENTA;
+        if (levelObjects[i].type == OBJ_MUD) objColor = DARKBROWN;
+        if (levelObjects[i].type == OBJ_ICE) objColor = SKYBLUE;
+        if (levelObjects[i].type == OBJ_DOOR) objColor = DARKBROWN;
         
-        if (levelObjects[i].type == OBJ_TRIGGER) {
-            DrawRectangleLinesEx(levelObjects[i].rect, 2.0f, objColor);
+        // --- NIEUW: Driehoekige Spikes ---
+        if (levelObjects[i].type == OBJ_HAZARD) {
+            Vector2 p1 = { levelObjects[i].rect.x + levelObjects[i].rect.width/2, levelObjects[i].rect.y };
+            Vector2 p2 = { levelObjects[i].rect.x, levelObjects[i].rect.y + levelObjects[i].rect.height };
+            Vector2 p3 = { levelObjects[i].rect.x + levelObjects[i].rect.width, levelObjects[i].rect.y + levelObjects[i].rect.height };
+            DrawTriangle(p1, p2, p3, RED);
+        } 
+        // --- NIEUW: Cirkelzagen ---
+        else if (levelObjects[i].type == OBJ_MOVING_HAZARD) {
+            Vector2 center = { levelObjects[i].rect.x + levelObjects[i].rect.width/2, levelObjects[i].rect.y + levelObjects[i].rect.height/2 };
+            DrawCircleV(center, levelObjects[i].rect.width/2, RED);
+            DrawCircleLines(center.x, center.y, levelObjects[i].rect.width/2, MAROON);
+            DrawCircleV(center, levelObjects[i].rect.width/4, DARKGRAY); // Binnenkant zaag
+        } 
+        else if (levelObjects[i].type == OBJ_KEY) {
+            DrawCircle(levelObjects[i].rect.x + levelObjects[i].rect.width/2, levelObjects[i].rect.y + levelObjects[i].rect.height/2, levelObjects[i].rect.width/2, GOLD);
+            DrawText(TextFormat("K%d", levelObjects[i].linkID), levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 10, BLACK);
         } else {
-            DrawRectangleRec(levelObjects[i].rect, objColor);
+            if (levelObjects[i].type == OBJ_TRIGGER || levelObjects[i].type == OBJ_DOOR) {
+                DrawRectangleLinesEx(levelObjects[i].rect, 2.0f, objColor);
+                if (levelObjects[i].type == OBJ_DOOR && (isEditMode || levelObjects[i].isActive)) {
+                    DrawRectangleRec(levelObjects[i].rect, Fade(DARKBROWN, 0.4f));
+                    DrawText(TextFormat("D%d", levelObjects[i].linkID), levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 10, WHITE);
+                }
+            } else {
+                DrawRectangleRec(levelObjects[i].rect, objColor);
+            }
         }
         
         if (levelObjects[i].type == OBJ_SPAWN) DrawText("S", levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 20, BLACK);
@@ -126,33 +153,33 @@ void DrawObjects(bool isEditMode) {
         if (levelObjects[i].type == OBJ_CHECKPOINT) DrawText("C", levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 20, RAYWHITE);
         if (levelObjects[i].type == OBJ_TRIGGER) DrawText("T", levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 20, MAGENTA);
         
-        if (isEditMode && (levelObjects[i].type == OBJ_MOVING_BLOCK || levelObjects[i].type == OBJ_TRIGGER)) {
+        if (isEditMode && (levelObjects[i].type == OBJ_MOVING_BLOCK || levelObjects[i].type == OBJ_MOVING_HAZARD || levelObjects[i].type == OBJ_TRIGGER)) {
             DrawText(TextFormat("%d", levelObjects[i].linkID), levelObjects[i].rect.x + 5, levelObjects[i].rect.y + 5, 10, RAYWHITE);
         }
 
-        // --- PATH VISUALIZATION UPDATE ---
-        if (isEditMode && levelObjects[i].type == OBJ_MOVING_BLOCK) {
+        // Teken bewegingslijn voor Blokken én Zagen!
+        if (isEditMode && (levelObjects[i].type == OBJ_MOVING_BLOCK || levelObjects[i].type == OBJ_MOVING_HAZARD)) {
             Vector2 center = { levelObjects[i].rect.x + levelObjects[i].rect.width/2, levelObjects[i].rect.y + levelObjects[i].rect.height/2 };
             Vector2 end = center;
             
             if (levelObjects[i].moveType == MOVE_HORZ) end.x += levelObjects[i].moveRange;
             if (levelObjects[i].moveType == MOVE_VERT) end.y += levelObjects[i].moveRange;
 
+            Color ghostColor = (levelObjects[i].type == OBJ_MOVING_HAZARD) ? RED : PURPLE;
+
             if (levelObjects[i].moveType == MOVE_CIRCLE) {
-                // The drag handle is the Pivot center!
-                float pivotX = center.x + levelObjects[i].moveRange;
-                float pivotY = center.y;
-                DrawCircleLines(pivotX, pivotY, fabsf(levelObjects[i].moveRange), Fade(PURPLE, 0.4f));
-                
-                // Draw handle AT the pivot
-                if (isSelected[i]) DrawRectangle(pivotX - 6, pivotY - 6, 12, 12, ORANGE);
+                float pivotX = levelObjects[i].rect.x + levelObjects[i].rect.width / 2.0f + levelObjects[i].moveRange;
+                float pivotY = levelObjects[i].rect.y + levelObjects[i].rect.height / 2.0f;
+                DrawCircleLines(pivotX, pivotY, fabsf(levelObjects[i].moveRange), Fade(ghostColor, 0.4f));
+                if (isSelected[i]) DrawRectangle(pivotX + levelObjects[i].moveRange - 6, pivotY - 6, 12, 12, ORANGE);
             } else {
-                DrawLineEx(center, end, 2.0f, Fade(PURPLE, 0.4f));
-                Rectangle ghost = levelObjects[i].rect;
-                ghost.x += (end.x - center.x);
-                ghost.y += (end.y - center.y);
-                DrawRectangleLinesEx(ghost, 2.0f, Fade(PURPLE, 0.4f));
-                
+                DrawLineEx(center, end, 2.0f, Fade(ghostColor, 0.4f));
+                if (levelObjects[i].type == OBJ_MOVING_HAZARD) {
+                    DrawCircleLines(end.x, end.y, levelObjects[i].rect.width/2, Fade(ghostColor, 0.4f));
+                } else {
+                    Rectangle ghost = levelObjects[i].rect; ghost.x += (end.x - center.x); ghost.y += (end.y - center.y);
+                    DrawRectangleLinesEx(ghost, 2.0f, Fade(ghostColor, 0.4f));
+                }
                 if (isSelected[i]) DrawRectangle(end.x - 6, end.y - 6, 12, 12, ORANGE);
             }
         }

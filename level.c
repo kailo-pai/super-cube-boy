@@ -63,10 +63,13 @@ bool UpdateEditor(Camera2D *camera) {
     for (int i = 0; i < objectCount; i++) { if (isSelected[i]) { selectedCount++; singleSelectedIdx = i; } }
 
     // --- DRAG HANDLE: GRID SNAPPED & NEGATIVE SUPPORT ---
-    if (selectedCount == 1 && levelObjects[singleSelectedIdx].type == OBJ_MOVING_BLOCK && currentTool == TOOL_NONE) {
+    // Werkt nu voor ZOWEL bewegende muren als cirkelzagen!
+    if (selectedCount == 1 && (levelObjects[singleSelectedIdx].type == OBJ_MOVING_BLOCK || levelObjects[singleSelectedIdx].type == OBJ_MOVING_HAZARD) && currentTool == TOOL_NONE) {
         LevelObject *obj = &levelObjects[singleSelectedIdx];
         Vector2 handlePos = { obj->rect.x + obj->rect.width/2, obj->rect.y + obj->rect.height/2 };
-        if (obj->moveType == MOVE_HORZ || obj->moveType == MOVE_CIRCLE) handlePos.x += obj->moveRange;
+        
+        if (obj->moveType == MOVE_HORZ) handlePos.x += obj->moveRange;
+        else if (obj->moveType == MOVE_CIRCLE) handlePos.x += (obj->moveRange * 2.0f); // Handle aan de overkant!
         else if (obj->moveType == MOVE_VERT) handlePos.y += obj->moveRange;
 
         Rectangle handleRect = { handlePos.x - 8, handlePos.y - 8, 16, 16 };
@@ -79,16 +82,25 @@ bool UpdateEditor(Camera2D *camera) {
             if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) isDraggingHandle = false;
             else {
                 float dist = 0;
-                if (obj->moveType == MOVE_HORZ || obj->moveType == MOVE_CIRCLE) dist = worldMousePos.x - (obj->rect.x + obj->rect.width/2);
-                else if (obj->moveType == MOVE_VERT) dist = worldMousePos.y - (obj->rect.y + obj->rect.height/2);
                 
-                // Snap to 25px grid
-                dist = roundf(dist / 25.0f) * 25.0f;
-                
-                // Prevent exactly zero range so it actually moves
-                if (dist == 0.0f) dist = 25.0f; 
-
-                obj->moveRange = dist;
+                if (obj->moveType == MOVE_HORZ) {
+                    dist = worldMousePos.x - (obj->rect.x + obj->rect.width/2);
+                    dist = roundf(dist / 25.0f) * 25.0f;
+                    if (dist == 0.0f) dist = 25.0f; 
+                    obj->moveRange = dist;
+                } 
+                else if (obj->moveType == MOVE_VERT) {
+                    dist = worldMousePos.y - (obj->rect.y + obj->rect.height/2);
+                    dist = roundf(dist / 25.0f) * 25.0f;
+                    if (dist == 0.0f) dist = 25.0f; 
+                    obj->moveRange = dist;
+                }
+                else if (obj->moveType == MOVE_CIRCLE) {
+                    dist = worldMousePos.x - (obj->rect.x + obj->rect.width/2);
+                    dist = roundf(dist / 50.0f) * 50.0f; 
+                    if (dist == 0.0f) dist = 50.0f; 
+                    obj->moveRange = dist / 2.0f; 
+                }
             }
             return false; 
         }
@@ -150,10 +162,19 @@ bool UpdateEditor(Camera2D *camera) {
         SaveSnapshot(); DeleteSelectedObjects(); isDragging = false;
     }
 
+    // --- PLACEMENT ---
     if (currentTool != TOOL_NONE && currentTool != TOOL_DELETE && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !isDragging && !isDraggingHandle && objectCount < MAX_OBJECTS) {
-        float bH = (currentTool == TOOL_HALF_WALL || currentTool == TOOL_HALF_HAZARD || currentTool == TOOL_HALF_MOVING_WALL) ? 25.0f : 50.0f;
+        
+        float bH = (currentTool == TOOL_HALF_WALL || currentTool == TOOL_HALF_MOVING_WALL || currentTool == TOOL_HALF_MUD || currentTool == TOOL_HALF_ICE || currentTool == TOOL_HALF_DOOR || currentTool == TOOL_HALF_MOVING_HAZARD) ? 25.0f : 50.0f;
         float fW = (placementRotation == 90 || placementRotation == 270) ? bH : 50.0f;
         float fH = (placementRotation == 90 || placementRotation == 270) ? 50.0f : bH;
+
+        // Vaste groottes (breedte blijft altijd 50 bij static spikes en moving saws tenzij half!)
+        if (currentTool == TOOL_KEY) { fW = 25.0f; fH = 25.0f; }
+        if (currentTool == TOOL_HAZARD) { fW = 50.0f; fH = 50.0f; }
+        if (currentTool == TOOL_HALF_HAZARD) { fW = 50.0f; fH = 25.0f; }
+        if (currentTool == TOOL_MOVING_HAZARD) { fW = 50.0f; fH = 50.0f; }
+        if (currentTool == TOOL_HALF_MOVING_HAZARD) { fW = 25.0f; fH = 25.0f; }
 
         Rectangle proposed = { (float)gridX, (float)gridY, fW, fH };
         bool alreadyExists = false;
@@ -169,15 +190,20 @@ bool UpdateEditor(Camera2D *camera) {
                                              (currentTool == TOOL_END) ? OBJ_END : 
                                              (currentTool == TOOL_CHECKPOINT) ? OBJ_CHECKPOINT : 
                                              (currentTool == TOOL_MOVING_WALL || currentTool == TOOL_HALF_MOVING_WALL) ? OBJ_MOVING_BLOCK : 
-                                             (currentTool == TOOL_TRIGGER) ? OBJ_TRIGGER : OBJ_WALL;
+                                             (currentTool == TOOL_MOVING_HAZARD || currentTool == TOOL_HALF_MOVING_HAZARD) ? OBJ_MOVING_HAZARD : 
+                                             (currentTool == TOOL_TRIGGER) ? OBJ_TRIGGER : 
+                                             (currentTool == TOOL_MUD || currentTool == TOOL_HALF_MUD) ? OBJ_MUD :
+                                             (currentTool == TOOL_ICE || currentTool == TOOL_HALF_ICE) ? OBJ_ICE : 
+                                             (currentTool == TOOL_DOOR || currentTool == TOOL_HALF_DOOR) ? OBJ_DOOR : 
+                                             (currentTool == TOOL_KEY) ? OBJ_KEY : OBJ_WALL;
             
             levelObjects[objectCount].rect = proposed;
             levelObjects[objectCount].rotation = placementRotation;
             
-            levelObjects[objectCount].linkID = (levelObjects[objectCount].type == OBJ_TRIGGER) ? 1 : 0; 
+            levelObjects[objectCount].linkID = (levelObjects[objectCount].type == OBJ_TRIGGER || levelObjects[objectCount].type == OBJ_DOOR || levelObjects[objectCount].type == OBJ_KEY) ? 1 : 0; 
             levelObjects[objectCount].moveType = MOVE_HORZ;
             levelObjects[objectCount].moveRange = 100.0f;
-            levelObjects[objectCount].moveSpeed = 1.5f; 
+            levelObjects[objectCount].moveSpeed = 1.5f; // Dit is Speed 5
 
             isSelected[objectCount] = false;
             objectCount++;
@@ -200,22 +226,32 @@ void DrawLevelWorld(Camera2D camera, bool isEditMode) {
         DrawRectangleLinesEx(selectionBox, 2.0f, BLUE);
     }
 
-    if (isEditMode && currentTool >= TOOL_WALL && currentTool <= TOOL_TRIGGER) {
+    if (isEditMode && currentTool != TOOL_NONE && currentTool != TOOL_DELETE) {
         Vector2 m = GetScreenToWorld2D(GetMousePosition(), camera);
         int gx = (int)(floor(m.x / 25.0f)) * 25;
         int gy = (int)(floor(m.y / 25.0f)) * 25;
-        float bH = (currentTool == TOOL_HALF_WALL || currentTool == TOOL_HALF_HAZARD || currentTool == TOOL_HALF_MOVING_WALL) ? 25.0f : 50.0f;
-        float fw = (placementRotation == 90 || placementRotation == 270) ? bH : 50.0f;
-        float fh = (placementRotation == 90 || placementRotation == 270) ? 50.0f : bH;
         
-        Color gC = (currentTool == TOOL_HAZARD || currentTool == TOOL_HALF_HAZARD) ? RED : 
+        float bH = (currentTool == TOOL_HALF_WALL || currentTool == TOOL_HALF_MOVING_WALL || currentTool == TOOL_HALF_MUD || currentTool == TOOL_HALF_ICE || currentTool == TOOL_HALF_DOOR || currentTool == TOOL_HALF_MOVING_HAZARD) ? 25.0f : 50.0f;
+        float fW = (placementRotation == 90 || placementRotation == 270) ? bH : 50.0f;
+        float fH = (placementRotation == 90 || placementRotation == 270) ? 50.0f : bH;
+        
+        if (currentTool == TOOL_KEY) { fW = 25.0f; fH = 25.0f; } 
+        if (currentTool == TOOL_HAZARD) { fW = 50.0f; fH = 50.0f; }
+        if (currentTool == TOOL_HALF_HAZARD) { fW = 50.0f; fH = 25.0f; }
+        if (currentTool == TOOL_MOVING_HAZARD) { fW = 50.0f; fH = 50.0f; }
+        if (currentTool == TOOL_HALF_MOVING_HAZARD) { fW = 25.0f; fH = 25.0f; }
+        
+        Color gC = (currentTool == TOOL_HAZARD || currentTool == TOOL_HALF_HAZARD || currentTool == TOOL_MOVING_HAZARD || currentTool == TOOL_HALF_MOVING_HAZARD) ? RED : 
                    (currentTool == TOOL_SPAWN) ? GREEN : 
                    (currentTool == TOOL_END) ? YELLOW : 
                    (currentTool == TOOL_CHECKPOINT) ? BLUE : 
                    (currentTool == TOOL_MOVING_WALL || currentTool == TOOL_HALF_MOVING_WALL) ? PURPLE : 
-                   (currentTool == TOOL_TRIGGER) ? MAGENTA : DARKGRAY;
+                   (currentTool == TOOL_TRIGGER) ? MAGENTA : 
+                   (currentTool == TOOL_MUD || currentTool == TOOL_HALF_MUD || currentTool == TOOL_DOOR || currentTool == TOOL_HALF_DOOR) ? DARKBROWN :
+                   (currentTool == TOOL_ICE || currentTool == TOOL_HALF_ICE) ? SKYBLUE : 
+                   (currentTool == TOOL_KEY) ? GOLD : DARKGRAY;
                    
-        DrawRectangle(gx, gy, fw, fh, Fade(gC, 0.5f)); 
+        DrawRectangle(gx, gy, fW, fH, Fade(gC, 0.5f)); 
     }
 }
 

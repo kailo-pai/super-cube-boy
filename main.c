@@ -5,6 +5,38 @@
 #include "ui.h"
 #include "objects.h"
 #include <string.h> 
+#include <stdio.h> 
+
+// --- NIEUWE FUNCTIES VOOR HET OPSLAAN VAN TIJDEN ---
+float GetBestTime(const char* levelName) {
+    char timeFile[128];
+    sprintf(timeFile, "%s.time", levelName);
+    float bestTime = 0.0f;
+    FILE *f = fopen(timeFile, "r");
+    if (f) {
+        fscanf(f, "%f", &bestTime);
+        fclose(f);
+        return bestTime;
+    }
+    return 0.0f; // 0 betekent dat het level nog nooit gehaald is
+}
+
+void SaveBestTime(const char* levelName, float newTime) {
+    char timeFile[128];
+    sprintf(timeFile, "%s.time", levelName);
+    
+    float oldTime = GetBestTime(levelName);
+    
+    // Alleen opslaan als we nog geen tijd hadden (0.0f) óf als de nieuwe tijd sneller is!
+    if (oldTime == 0.0f || newTime < oldTime) {
+        FILE *f = fopen(timeFile, "w");
+        if (f) {
+            fprintf(f, "%f", newTime);
+            fclose(f);
+        }
+    }
+}
+// ---------------------------------------------------
 
 int main(void)
 {
@@ -82,13 +114,12 @@ int main(void)
                 
                 if (targetState == PLAY_MODE) {
                     for (int i = 0; i < objectCount; i++) {
-                        if (levelObjects[i].type == OBJ_MOVING_BLOCK) {
+                        // FIX: OBJ_MOVING_HAZARD (de zagen) onthouden nu ook perfect hun startpositie!
+                        if (levelObjects[i].type == OBJ_MOVING_BLOCK || levelObjects[i].type == OBJ_MOVING_HAZARD) {
                             levelObjects[i].startX = levelObjects[i].rect.x;
                             levelObjects[i].startY = levelObjects[i].rect.y;
-                            // Circles start opposite their pivot!
                             levelObjects[i].currentAngle = 3.14159f; 
                             levelObjects[i].progress = 0.0f;
-                            // Set initial direction to backwards if range is negative!
                             levelObjects[i].moveDir = (levelObjects[i].moveRange < 0) ? -1 : 1; 
                             levelObjects[i].waitTimer = 0.5f; 
                             levelObjects[i].isActive = (levelObjects[i].linkID == 0);
@@ -115,7 +146,10 @@ int main(void)
                 currentState = PAUSE_MENU;
             } else {
                 UpdatePlayer(&player, levelObjects, objectCount, &playCamera, levelBounds);
-                if (player.hasWon) currentState = WIN_SCREEN;
+                if (player.hasWon) {
+                    SaveBestTime(currentLevelFile, player.levelTimer);
+                    currentState = WIN_SCREEN;
+                }
             }
         }
         else if (currentState == PAUSE_MENU || currentState == EDITOR_PAUSE_MENU) {
@@ -126,7 +160,6 @@ int main(void)
 
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 if (CheckCollisionPointRec(screenMousePos, continueBtn)) {
-                    // Removed the buggy reset loop from here! Now unpausing just resumes!
                     currentState = (currentState == PAUSE_MENU) ? PLAY_MODE : EDIT_MODE;
                 }
                 if (CheckCollisionPointRec(screenMousePos, backBtn)) currentState = MAIN_MENU;
@@ -134,7 +167,7 @@ int main(void)
         }
         else if (currentState == WIN_SCREEN) {
             if (IsKeyPressed(KEY_ESCAPE)) currentState = MAIN_MENU;
-            Rectangle backBtn = { 300, 260, 200, 50 };
+            Rectangle backBtn = { 300, 280, 200, 50 }; 
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(screenMousePos, backBtn)) currentState = MAIN_MENU;
         }
 
@@ -153,12 +186,22 @@ int main(void)
             else if (currentState == LEVEL_SELECT)
             {
                 DrawText(targetState == PLAY_MODE ? "SELECT LEVEL TO PLAY" : "SELECT LEVEL TO EDIT", 220, 80, 30, DARKGRAY);
+                
                 DrawRectangleRec(level1Button, CheckCollisionPointRec(screenMousePos, level1Button) ? LIGHTGRAY : DARKGRAY);
                 DrawText(FileExists("level_1.txt") ? "Level 1" : "Level 1 (Empty)", (int)level1Button.x + 20, (int)level1Button.y + 15, 20, WHITE);
+                float t1 = GetBestTime("level_1.txt");
+                if (t1 > 0.0f && targetState == PLAY_MODE) DrawText(TextFormat("Best: %.2fs", t1), (int)level1Button.x + 210, (int)level1Button.y + 15, 20, DARKGREEN);
+
                 DrawRectangleRec(level2Button, CheckCollisionPointRec(screenMousePos, level2Button) ? LIGHTGRAY : DARKGRAY);
                 DrawText(FileExists("level_2.txt") ? "Level 2" : "Level 2 (Empty)", (int)level2Button.x + 20, (int)level2Button.y + 15, 20, WHITE);
+                float t2 = GetBestTime("level_2.txt");
+                if (t2 > 0.0f && targetState == PLAY_MODE) DrawText(TextFormat("Best: %.2fs", t2), (int)level2Button.x + 210, (int)level2Button.y + 15, 20, DARKGREEN);
+
                 DrawRectangleRec(level3Button, CheckCollisionPointRec(screenMousePos, level3Button) ? LIGHTGRAY : DARKGRAY);
                 DrawText(FileExists("level_3.txt") ? "Level 3" : "Level 3 (Empty)", (int)level3Button.x + 20, (int)level3Button.y + 15, 20, WHITE);
+                float t3 = GetBestTime("level_3.txt");
+                if (t3 > 0.0f && targetState == PLAY_MODE) DrawText(TextFormat("Best: %.2fs", t3), (int)level3Button.x + 210, (int)level3Button.y + 15, 20, DARKGREEN);
+
                 DrawText("Press 'ESC' for Main Menu", 10, 10, 20, MAROON);
             }
             else if (currentState == EDIT_MODE) 
@@ -184,6 +227,7 @@ int main(void)
                 EndMode2D();
                 
                 DrawText(TextFormat("Deaths: %d", player.deathCount), 10, 10, 20, RED);
+                DrawText(TextFormat("Time: %.2f", player.levelTimer), 10, 35, 20, BLACK);
                 
                 DrawRectangleRec(xBtn, CheckCollisionPointRec(screenMousePos, xBtn) ? RED : MAROON);
                 DrawText("X", xBtn.x + 8, xBtn.y + 5, 20, RAYWHITE);
@@ -207,12 +251,14 @@ int main(void)
             else if (currentState == WIN_SCREEN) 
             {
                 DrawRectangle(0, 0, 800, 450, Fade(RAYWHITE, 0.8f));
-                DrawText("LEVEL COMPLETE!", 210, 150, 40, DARKGREEN);
+                DrawText("LEVEL COMPLETE!", 210, 120, 40, DARKGREEN);
+                
+                DrawText(TextFormat("Time: %.2f seconds", player.levelTimer), 290, 180, 20, BLACK);
                 DrawText(TextFormat("Total Deaths: %d", player.deathCount), 310, 210, 20, MAROON);
                 
-                Rectangle backBtn = { 300, 260, 200, 50 };
+                Rectangle backBtn = { 300, 280, 200, 50 };
                 DrawRectangleRec(backBtn, CheckCollisionPointRec(screenMousePos, backBtn) ? LIGHTGRAY : DARKGRAY);
-                DrawText("MAIN MENU", 345, 275, 20, CheckCollisionPointRec(screenMousePos, backBtn) ? DARKGRAY : WHITE);
+                DrawText("MAIN MENU", 345, 295, 20, CheckCollisionPointRec(screenMousePos, backBtn) ? DARKGRAY : WHITE);
             }
             
         EndDrawing();
